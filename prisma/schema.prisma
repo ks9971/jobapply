@@ -3,8 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider = "sqlite"
 }
 
 model User {
@@ -17,11 +16,11 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  accounts    Account[]
-  sessions    Session[]
-  profile     Profile?
-  cvDocuments CVDocument[]
-  applications Application[]
+  accounts          Account[]
+  sessions          Session[]
+  profile           Profile?
+  cvDocuments       CVDocument[]
+  applications      Application[]
   portalCredentials PortalCredential[]
 }
 
@@ -59,17 +58,17 @@ model Profile {
   location        String?
   headline        String?
   summary         String?
-  totalExperience Int?     // in months
+  totalExperience Int?
   currentSalary   String?
   expectedSalary  String?
   noticePeriod    String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  education   Education[]
-  experience  Experience[]
-  skills      Skill[]
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  education     Education[]
+  experience    Experience[]
+  skills        Skill[]
   jobPreference JobPreference?
 }
 
@@ -87,67 +86,67 @@ model Education {
 }
 
 model Experience {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   profileId   String
   company     String
   title       String
   location    String?
   startDate   DateTime?
   endDate     DateTime?
-  current     Boolean  @default(false)
+  current     Boolean   @default(false)
   description String?
 
   profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 }
 
 model Skill {
-  id        String @id @default(cuid())
+  id        String  @id @default(cuid())
   profileId String
   name      String
-  level     String? // beginner, intermediate, expert
+  level     String?
 
   profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 }
 
 model JobPreference {
-  id              String   @id @default(cuid())
-  profileId       String   @unique
-  roles           String[] // desired job titles
-  locations       String[] // preferred locations
+  id              String  @id @default(cuid())
+  profileId       String  @unique
+  roles           String  @default("[]") // JSON array
+  locations       String  @default("[]") // JSON array
   minSalary       Int?
   maxSalary       Int?
-  jobType         String?  // full-time, part-time, contract
-  remote          Boolean  @default(false)
-  industries      String[]
-  experienceLevel String?  // entry, mid, senior
+  jobType         String?
+  remote          Boolean @default(false)
+  industries      String  @default("[]") // JSON array
+  experienceLevel String?
 
   profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 }
 
 model CVDocument {
-  id          String   @id @default(cuid())
-  userId      String
-  filename    String
-  filePath    String
-  fileType    String   // original, generated
-  parsedData  Json?    // structured CV data from AI parsing
-  templateId  String?
-  createdAt   DateTime @default(now())
+  id         String   @id @default(cuid())
+  userId     String
+  filename   String
+  filePath   String
+  fileType   String
+  parsedData String?  // JSON string
+  templateId String?
+  createdAt  DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Application {
-  id         String   @id @default(cuid())
-  userId     String
-  jobTitle   String
-  company    String
-  jobUrl     String?
-  portal     String   // naukri, linkedin, indeed, manual
-  status     String   @default("applied") // applied, in_review, interview, rejected, offered
-  appliedAt  DateTime @default(now())
-  cvUsed     String?  // reference to CVDocument id
-  notes      String?
+  id        String   @id @default(cuid())
+  userId    String
+  jobTitle  String
+  company   String
+  jobUrl    String?
+  portal    String
+  status    String   @default("applied")
+  appliedAt DateTime @default(now())
+  cvUsed    String?
+  notes     String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -155,9 +154,9 @@ model Application {
 model PortalCredential {
   id       String @id @default(cuid())
   userId   String
-  portal   String // naukri, linkedin, indeed
+  portal   String
   username String
-  password String // encrypted
+  password String
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

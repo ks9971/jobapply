@@ -1,6 +1,8 @@
 import OpenAI from "openai";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+function getOpenAI() {
+  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+}
 
 interface CVBuildRequest {
   profileData: Record<string, unknown>;
@@ -29,7 +31,7 @@ Output the CV in clean, well-structured markdown format with clear sections:
 
 Use action verbs, quantify achievements where possible, and keep it concise (2 pages max).`;
 
-  const response = await openai.chat.completions.create({
+  const response = await getOpenAI().chat.completions.create({
     model: "gpt-4o-mini",
     messages: [
       { role: "system", content: systemPrompt },
