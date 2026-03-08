@@ -1,0 +1,165 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  password      String?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts    Account[]
+  sessions    Session[]
+  profile     Profile?
+  cvDocuments CVDocument[]
+  applications Application[]
+  portalCredentials PortalCredential[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Profile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  phone           String?
+  location        String?
+  headline        String?
+  summary         String?
+  totalExperience Int?     // in months
+  currentSalary   String?
+  expectedSalary  String?
+  noticePeriod    String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  education   Education[]
+  experience  Experience[]
+  skills      Skill[]
+  jobPreference JobPreference?
+}
+
+model Education {
+  id          String  @id @default(cuid())
+  profileId   String
+  institution String
+  degree      String
+  field       String?
+  startYear   Int?
+  endYear     Int?
+  grade       String?
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model Experience {
+  id          String   @id @default(cuid())
+  profileId   String
+  company     String
+  title       String
+  location    String?
+  startDate   DateTime?
+  endDate     DateTime?
+  current     Boolean  @default(false)
+  description String?
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model Skill {
+  id        String @id @default(cuid())
+  profileId String
+  name      String
+  level     String? // beginner, intermediate, expert
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model JobPreference {
+  id              String   @id @default(cuid())
+  profileId       String   @unique
+  roles           String[] // desired job titles
+  locations       String[] // preferred locations
+  minSalary       Int?
+  maxSalary       Int?
+  jobType         String?  // full-time, part-time, contract
+  remote          Boolean  @default(false)
+  industries      String[]
+  experienceLevel String?  // entry, mid, senior
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model CVDocument {
+  id          String   @id @default(cuid())
+  userId      String
+  filename    String
+  filePath    String
+  fileType    String   // original, generated
+  parsedData  Json?    // structured CV data from AI parsing
+  templateId  String?
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Application {
+  id         String   @id @default(cuid())
+  userId     String
+  jobTitle   String
+  company    String
+  jobUrl     String?
+  portal     String   // naukri, linkedin, indeed, manual
+  status     String   @default("applied") // applied, in_review, interview, rejected, offered
+  appliedAt  DateTime @default(now())
+  cvUsed     String?  // reference to CVDocument id
+  notes      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PortalCredential {
+  id       String @id @default(cuid())
+  userId   String
+  portal   String // naukri, linkedin, indeed
+  username String
+  password String // encrypted
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, portal])
+}
