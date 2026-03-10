@@ -124,14 +124,15 @@ model JobPreference {
 }
 
 model CVDocument {
-  id         String   @id @default(cuid())
-  userId     String
-  filename   String
-  filePath   String
-  fileType   String
-  parsedData String?  // JSON string
-  templateId String?
-  createdAt  DateTime @default(now())
+  id          String   @id @default(cuid())
+  userId      String
+  filename    String
+  filePath    String   @default("")
+  fileType    String
+  fileContent String?  // Base64 for uploads, markdown for generated
+  parsedData  String?  // JSON string
+  templateId  String?
+  createdAt   DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { buildCV } from "@/lib/ai/cv-builder";
-import { writeFile, mkdir } from "fs/promises";
-import path from "path";
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -49,20 +47,16 @@ export async function POST(req: NextRequest) {
     emphasis,
   });
 
-  // Save the generated CV
-  const uploadDir = path.join(process.cwd(), "uploads", session.user.id);
-  await mkdir(uploadDir, { recursive: true });
-
+  // Save the generated CV content in DB
   const filename = `generated-cv-${Date.now()}.md`;
-  const filePath = path.join(uploadDir, filename);
-  await writeFile(filePath, cvContent);
 
   const cvDocument = await db.cVDocument.create({
     data: {
       userId: session.user.id,
       filename,
-      filePath,
+      filePath: "",
       fileType: "generated",
+      fileContent: cvContent,
     },
   });
 

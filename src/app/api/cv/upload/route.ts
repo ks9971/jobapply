@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { writeFile, mkdir } from "fs/promises";
-import path from "path";
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -31,20 +29,15 @@ export async function POST(req: NextRequest) {
 
   const bytes = await file.arrayBuffer();
   const buffer = Buffer.from(bytes);
-
-  const uploadDir = path.join(process.cwd(), "uploads", session.user.id);
-  await mkdir(uploadDir, { recursive: true });
-
-  const filename = `${Date.now()}-${file.name}`;
-  const filePath = path.join(uploadDir, filename);
-  await writeFile(filePath, buffer);
+  const base64Content = buffer.toString("base64");
 
   const cvDocument = await db.cVDocument.create({
     data: {
       userId: session.user.id,
       filename: file.name,
-      filePath: filePath,
+      filePath: "",
       fileType: "original",
+      fileContent: base64Content,
     },
   });
 
@@ -60,6 +53,14 @@ export async function GET() {
   const documents = await db.cVDocument.findMany({
     where: { userId: session.user.id },
     orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      filename: true,
+      fileType: true,
+      parsedData: true,
+      templateId: true,
+      createdAt: true,
+    },
   });
 
   return NextResponse.json(documents);

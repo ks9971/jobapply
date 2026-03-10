@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { unlink } from "fs/promises";
 
 export async function DELETE(
   _req: NextRequest,
@@ -20,13 +19,6 @@ export async function DELETE(
 
   if (!doc) {
     return NextResponse.json({ error: "Document not found" }, { status: 404 });
-  }
-
-  // Delete file from disk
-  try {
-    await unlink(doc.filePath);
-  } catch {
-    // File may already be deleted, continue
   }
 
   await db.cVDocument.delete({ where: { id } });

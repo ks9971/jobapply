@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { readFile } from "fs/promises";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const pdfParse = require("pdf-parse");
 import OpenAI from "openai";
@@ -18,12 +17,12 @@ export async function POST(req: NextRequest) {
     where: { id: documentId, userId: session.user.id },
   });
 
-  if (!doc) {
+  if (!doc || !doc.fileContent) {
     return NextResponse.json({ error: "Document not found" }, { status: 404 });
   }
 
-  // Read and parse PDF
-  const fileBuffer = await readFile(doc.filePath);
+  // Decode base64 content and parse PDF
+  const fileBuffer = Buffer.from(doc.fileContent, "base64");
   const pdfData = await pdfParse(fileBuffer);
   const text = pdfData.text;
 
