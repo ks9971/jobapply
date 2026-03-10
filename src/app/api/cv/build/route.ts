@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
     summary: profile.summary,
     education: profile.education,
     experience: profile.experience,
-    skills: profile.skills.map((s) => ({ name: s.name, level: s.level })),
+    skills: profile.skills.map((s: { name: string; level: string | null }) => ({ name: s.name, level: s.level })),
   };
 
   const cvContent = await buildCV({
