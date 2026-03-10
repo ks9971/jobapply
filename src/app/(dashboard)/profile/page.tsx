@@ -81,7 +81,8 @@ export default function ProfilePage() {
 
   async function addEducation(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const formData = new FormData(e.currentTarget);
+    const form = e.currentTarget;
+    const formData = new FormData(form);
     const data = Object.fromEntries(formData.entries());
 
     await fetch("/api/profile/education", {
@@ -90,7 +91,7 @@ export default function ProfilePage() {
       body: JSON.stringify(data),
     });
 
-    e.currentTarget.reset();
+    form.reset();
     fetchProfile();
   }
 
@@ -101,7 +102,8 @@ export default function ProfilePage() {
 
   async function addExperience(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const formData = new FormData(e.currentTarget);
+    const form = e.currentTarget;
+    const formData = new FormData(form);
     const data: Record<string, unknown> = Object.fromEntries(formData.entries());
     data.current = formData.get("current") === "on";
 
@@ -111,7 +113,7 @@ export default function ProfilePage() {
       body: JSON.stringify(data),
     });
 
-    e.currentTarget.reset();
+    form.reset();
     fetchProfile();
   }
 
@@ -122,7 +124,8 @@ export default function ProfilePage() {
 
   async function addSkill(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const formData = new FormData(e.currentTarget);
+    const form = e.currentTarget;
+    const formData = new FormData(form);
     const data = Object.fromEntries(formData.entries());
 
     await fetch("/api/profile/skills", {
@@ -131,7 +134,7 @@ export default function ProfilePage() {
       body: JSON.stringify(data),
     });
 
-    e.currentTarget.reset();
+    form.reset();
     fetchProfile();
   }
 

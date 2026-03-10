@@ -29,6 +29,10 @@ export async function PUT(req: NextRequest) {
 
   const data = await req.json();
 
+  const totalExperience = data.totalExperience != null
+    ? parseInt(String(data.totalExperience), 10) || null
+    : null;
+
   const profile = await db.profile.upsert({
     where: { userId: session.user.id },
     update: {
@@ -36,7 +40,7 @@ export async function PUT(req: NextRequest) {
       location: data.location,
       headline: data.headline,
       summary: data.summary,
-      totalExperience: data.totalExperience,
+      totalExperience,
       currentSalary: data.currentSalary,
       expectedSalary: data.expectedSalary,
       noticePeriod: data.noticePeriod,
@@ -47,7 +51,7 @@ export async function PUT(req: NextRequest) {
       location: data.location,
       headline: data.headline,
       summary: data.summary,
-      totalExperience: data.totalExperience,
+      totalExperience,
       currentSalary: data.currentSalary,
       expectedSalary: data.expectedSalary,
       noticePeriod: data.noticePeriod,
