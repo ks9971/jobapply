@@ -62,7 +62,7 @@ export default async function DashboardPage() {
           </div>
         ) : (
           <div className="divide-y divide-gray-200">
-            {recentApplications.map((app) => (
+            {recentApplications.map((app: { id: string; jobTitle: string; company: string; portal: string; status: string; appliedAt: Date }) => (
               <div key={app.id} className="p-4 flex items-center justify-between">
                 <div>
                   <p className="font-medium text-gray-900">{app.jobTitle}</p>
