@@ -84,7 +84,16 @@ export default function CVBuilderPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ documentId }),
     });
-    if (res.ok) fetchDocuments();
+    if (res.ok) {
+      const data = await res.json();
+      fetchDocuments();
+      if (data.imported) {
+        alert(`CV parsed and profile auto-updated!\n\nImported: ${data.imported.skills} skills, ${data.imported.experience} experiences, ${data.imported.education} education entries.\n\nCheck your Profile page to review.`);
+      }
+    } else {
+      const err = await res.json();
+      alert(`Parse failed: ${err.error || "Unknown error"}`);
+    }
     setParsing(null);
   }
 

@@ -15,6 +15,7 @@ model User {
   image         String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+  onboarded     Boolean   @default(false)
 
   accounts          Account[]
   sessions          Session[]
@@ -22,6 +23,10 @@ model User {
   cvDocuments       CVDocument[]
   applications      Application[]
   portalCredentials PortalCredential[]
+  chatMessages      ChatMessage[]
+  savedJobs         SavedJob[]
+  gmailToken        GmailToken?
+  emailTracking     EmailTracking[]
 }
 
 model Account {
@@ -138,16 +143,18 @@ model CVDocument {
 }
 
 model Application {
-  id        String   @id @default(cuid())
-  userId    String
-  jobTitle  String
-  company   String
-  jobUrl    String?
-  portal    String
-  status    String   @default("applied")
-  appliedAt DateTime @default(now())
-  cvUsed    String?
-  notes     String?
+  id           String   @id @default(cuid())
+  userId       String
+  jobTitle     String
+  company      String
+  jobUrl       String?
+  portal       String
+  status       String   @default("applied")
+  appliedAt    DateTime @default(now())
+  cvUsed       String?
+  notes        String?
+  coverLetter  String?  // AI-generated cover letter
+  tailoredCV   String?  // AI-tailored CV markdown
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -162,4 +169,63 @@ model PortalCredential {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, portal])
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  userId    String
+  role      String   // "user" or "assistant"
+  content   String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model SavedJob {
+  id          String   @id @default(cuid())
+  userId      String
+  externalId  String?  // ID from job API
+  title       String
+  company     String
+  location    String?
+  salary      String?
+  description String?
+  url         String?
+  source      String?  // "adzuna", "jsearch", etc.
+  matchScore  Int?     // AI-calculated match percentage
+  matchReason String?  // Why this job matches
+  status      String   @default("new") // new, interested, applied, rejected
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model GmailToken {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  accessToken  String
+  refreshToken String
+  expiresAt    DateTime
+  email        String   // Gmail address
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model EmailTracking {
+  id            String   @id @default(cuid())
+  userId        String
+  applicationId String?
+  gmailMsgId    String?  // Gmail message ID
+  subject       String
+  fromEmail     String
+  snippet       String?  // Preview text
+  category      String   // "interview_invite", "rejection", "follow_up", "offer", "other"
+  parsedData    String?  // AI-parsed structured data (JSON)
+  isRead        Boolean  @default(false)
+  receivedAt    DateTime
+  createdAt     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
