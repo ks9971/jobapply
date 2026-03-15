@@ -135,7 +135,7 @@ export default function CVBuilderPage() {
   }
 
   return (
-    <div>
+    <div className="p-8">
       <h1 className="text-2xl font-bold text-gray-900 mb-6">CV Builder</h1>
 
       {/* Tabs */}

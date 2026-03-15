@@ -155,7 +155,7 @@ export default function ProfilePage() {
   ];
 
   return (
-    <div>
+    <div className="p-8">
       <h1 className="text-2xl font-bold text-gray-900 mb-6">Your Profile</h1>
 
       {message && (
