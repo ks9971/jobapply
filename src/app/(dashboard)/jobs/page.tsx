@@ -10,6 +10,7 @@ interface Job {
   url: string;
   source: string;
   emails: string[];
+  hasEmail: boolean;
   matchScore: number;
   matchReason: string;
 }
@@ -64,9 +65,10 @@ export default function JobsPage() {
       const data = await res.json();
       setResults(data.jobs || []);
       if (data.jobs?.length === 0) {
-        setMessage({ type: "error", text: "No jobs with email contacts found. Try a broader search." });
+        setMessage({ type: "error", text: "No jobs found. Try a broader search." });
       } else {
-        setMessage({ type: "success", text: `Found ${data.jobs.length} jobs with email contacts!` });
+        const emailCount = data.withEmails || 0;
+        setMessage({ type: "success", text: `Found ${data.jobs.length} jobs (${emailCount} with direct email apply)!` });
       }
       fetchSavedJobs();
     } else {
@@ -114,7 +116,7 @@ export default function JobsPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Job Search</h1>
-          <p className="text-gray-500">Find jobs with email contacts — apply instantly via Gmail</p>
+          <p className="text-gray-500">Find jobs and apply instantly via Gmail when email contacts are available</p>
         </div>
       </div>
 
@@ -161,7 +163,7 @@ export default function JobsPage() {
           </div>
         </div>
         <p className="text-xs text-gray-400 mt-3">
-          Only shows jobs that include an email address for direct application. AI scores each job against your profile.
+          AI scores each job against your profile. Jobs with email contacts are highlighted for one-click apply.
         </p>
       </form>
 
@@ -178,33 +180,51 @@ export default function JobsPage() {
       {results.length > 0 && (
         <div className="space-y-4 mb-8">
           <h2 className="text-lg font-semibold text-gray-900">
-            Search Results ({results.length} jobs with email)
+            Search Results ({results.length} jobs)
           </h2>
           {results.map((job, i) => (
-            <div key={i} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div key={i} className={`bg-white rounded-xl shadow-sm border overflow-hidden ${job.hasEmail ? "border-green-200" : "border-gray-200"}`}>
               <div className="p-5">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-1">
+                    <div className="flex items-center gap-3 mb-1 flex-wrap">
                       <h3 className="font-semibold text-gray-900">{job.title}</h3>
                       <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${getScoreColor(job.matchScore)}`}>
                         {job.matchScore}% match
                       </span>
+                      {job.hasEmail && (
+                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200">
+                          Email Apply
+                        </span>
+                      )}
                     </div>
                     <p className="text-sm text-gray-600">{job.company} {job.location && `· ${job.location}`}</p>
                     <p className="text-xs text-gray-400 mt-1">{job.matchReason}</p>
                   </div>
                   <div className="flex flex-col gap-2">
-                    {job.emails.map((email) => (
-                      <button
-                        key={email}
-                        onClick={() => applyToJob(job, email)}
-                        disabled={applying === email}
-                        className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 text-sm font-medium whitespace-nowrap transition-colors"
-                      >
-                        {applying === email ? "Sending..." : `Apply → ${email}`}
-                      </button>
-                    ))}
+                    {job.hasEmail ? (
+                      job.emails.map((email) => (
+                        <button
+                          key={email}
+                          onClick={() => applyToJob(job, email)}
+                          disabled={applying === email}
+                          className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 text-sm font-medium whitespace-nowrap transition-colors"
+                        >
+                          {applying === email ? "Sending..." : `Apply → ${email}`}
+                        </button>
+                      ))
+                    ) : (
+                      job.url && (
+                        <a
+                          href={job.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium whitespace-nowrap transition-colors text-center"
+                        >
+                          View Listing
+                        </a>
+                      )
+                    )}
                   </div>
                 </div>
 
@@ -265,8 +285,8 @@ export default function JobsPage() {
           </div>
           <h3 className="text-lg font-semibold text-gray-900 mb-2">Search for Jobs</h3>
           <p className="text-gray-500 max-w-md mx-auto">
-            Enter a job role and location above. We&apos;ll find jobs that accept email applications
-            and score them against your profile.
+            Enter a job role and location above. We&apos;ll find matching jobs, score them against
+            your profile, and highlight ones with email contacts for instant apply.
           </p>
         </div>
       )}

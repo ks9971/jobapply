@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
         jobs: [],
         totalFound: 0,
         withEmails: 0,
-        message: "No jobs with email contacts found. Try a different search query.",
+        message: "No jobs found. Try a different search query.",
       });
     }
 
@@ -69,10 +69,12 @@ Location: ${profile.location || "India"}`
       });
     }
 
+    const withEmails = scoredJobs.filter((j) => j.hasEmail).length;
+
     return NextResponse.json({
       jobs: scoredJobs,
       totalFound: scoredJobs.length,
-      withEmails: scoredJobs.length,
+      withEmails,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Job search failed";

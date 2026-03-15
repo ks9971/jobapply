@@ -19,7 +19,7 @@ interface SerperResponse {
   organic?: { title: string; snippet: string; link: string }[];
 }
 
-export interface JobWithEmail {
+export interface JobResult {
   title: string;
   company: string;
   location: string;
@@ -27,8 +27,12 @@ export interface JobWithEmail {
   url: string;
   source: string;
   emails: string[];
+  hasEmail: boolean;
   salary?: string;
 }
+
+// Keep backward compat alias
+export type JobWithEmail = JobResult;
 
 // Extract email addresses from text
 function extractEmails(text: string): string[] {
@@ -47,8 +51,8 @@ export async function searchJobs(query: string, location?: string): Promise<Serp
   const apiKey = process.env.SERPER_API_KEY;
   if (!apiKey) throw new Error("SERPER_API_KEY not configured");
 
-  // Use Google Jobs search
-  const searchQuery = location ? `${query} jobs ${location} email apply` : `${query} jobs India email apply`;
+  // Web search for job listings
+  const searchQuery = location ? `${query} jobs ${location}` : `${query} jobs India`;
 
   const res = await fetch("https://google.serper.dev/search", {
     method: "POST",
@@ -114,11 +118,11 @@ async function fetchPageEmails(url: string): Promise<string[]> {
   }
 }
 
-// Full pipeline: search jobs, extract emails, filter to only email-apply jobs
+// Full pipeline: search jobs, extract emails, return all jobs (email ones flagged)
 export async function findJobsWithEmails(
   query: string,
   location?: string
-): Promise<JobWithEmail[]> {
+): Promise<JobResult[]> {
   // Run both searches in parallel
   const [webResults, jobResults] = await Promise.all([
     searchJobs(query, location).catch(() => ({ organic: [] } as SerperResponse)),
@@ -127,7 +131,7 @@ export async function findJobsWithEmails(
 
   const allJobs: { title: string; company: string; location: string; description: string; url: string; source: string }[] = [];
 
-  // Process Google Jobs results
+  // Process Google Jobs results first (higher quality)
   if (jobResults.jobs) {
     for (const job of jobResults.jobs) {
       allJobs.push({
@@ -141,7 +145,7 @@ export async function findJobsWithEmails(
     }
   }
 
-  // Process web search results (often have email-apply jobs)
+  // Process web search results
   if (webResults.organic) {
     for (const result of webResults.organic) {
       allJobs.push({
@@ -155,35 +159,53 @@ export async function findJobsWithEmails(
     }
   }
 
-  // Extract emails from descriptions and fetch pages for more
-  const jobsWithEmails: JobWithEmail[] = [];
+  // Deduplicate by title+company (case-insensitive)
+  const seen = new Set<string>();
+  const uniqueJobs = allJobs.filter((job) => {
+    const key = `${job.title.toLowerCase()}|${job.company.toLowerCase()}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 
-  for (const job of allJobs) {
-    // First check description for emails
-    let emails = extractEmails(job.description);
+  // Extract emails from descriptions and try fetching pages (limit concurrent fetches)
+  const results: JobResult[] = [];
 
-    // If no email in description, try fetching the page
-    if (emails.length === 0 && job.url) {
-      emails = await fetchPageEmails(job.url);
-    }
-
-    // Only keep jobs that have emails
-    if (emails.length > 0) {
-      jobsWithEmails.push({
-        ...job,
-        emails,
-      });
-    }
+  // Process in batches of 5 to avoid too many concurrent requests
+  for (let i = 0; i < uniqueJobs.length; i += 5) {
+    const batch = uniqueJobs.slice(i, i + 5);
+    const batchResults = await Promise.all(
+      batch.map(async (job) => {
+        let emails = extractEmails(job.description);
+        // Only fetch page if no emails found in description
+        if (emails.length === 0 && job.url) {
+          emails = await fetchPageEmails(job.url);
+        }
+        return {
+          ...job,
+          emails,
+          hasEmail: emails.length > 0,
+        };
+      })
+    );
+    results.push(...batchResults);
   }
 
-  return jobsWithEmails;
+  // Sort: email-apply jobs first, then the rest
+  results.sort((a, b) => {
+    if (a.hasEmail && !b.hasEmail) return -1;
+    if (!a.hasEmail && b.hasEmail) return 1;
+    return 0;
+  });
+
+  return results;
 }
 
 // AI scores jobs against user profile
 export async function scoreJobsAgainstProfile(
-  jobs: JobWithEmail[],
+  jobs: JobResult[],
   profileSummary: string
-): Promise<(JobWithEmail & { matchScore: number; matchReason: string })[]> {
+): Promise<(JobResult & { matchScore: number; matchReason: string })[]> {
   if (jobs.length === 0) return [];
 
   const openai = getOpenAI();
