@@ -13,10 +13,10 @@ const styles = StyleSheet.create({
   section: { marginBottom: 16 },
   sectionTitle: { fontSize: 9, fontFamily: "Helvetica-Bold", color: "#9ca3af", textTransform: "uppercase", letterSpacing: 2, marginBottom: 10 },
   summary: { fontSize: 10, lineHeight: 1.6, color: "#4b5563", textAlign: "center" },
-  entryHeader: { flexDirection: "row", justifyContent: "space-between", marginBottom: 2 },
-  entryTitle: { fontSize: 10, fontFamily: "Helvetica-Bold" },
+  entryHeader: { flexDirection: "row", justifyContent: "space-between", marginBottom: 2, gap: 8 },
+  entryTitle: { fontSize: 10, fontFamily: "Helvetica-Bold", flex: 1 },
   entrySubtitle: { fontSize: 9, color: "#6b7280" },
-  entryDate: { fontSize: 9, color: "#9ca3af" },
+  entryDate: { fontSize: 9, color: "#9ca3af", flexShrink: 0, textAlign: "right" },
   entryDesc: { fontSize: 9, lineHeight: 1.4, color: "#4b5563", marginTop: 3, marginBottom: 10 },
   skillsRow: { flexDirection: "row", flexWrap: "wrap", gap: 4 },
   skillText: { fontSize: 9, color: "#4b5563" },
@@ -59,7 +59,15 @@ export function MinimalTemplate({ data }: { data: CVData }) {
                     </Text>
                   </View>
                   <Text style={styles.entrySubtitle}>{exp.company}</Text>
-                  {exp.description && <Text style={styles.entryDesc}>{exp.description}</Text>}
+                  {exp.description && (
+                    <View style={styles.entryDesc}>
+                      {exp.description.split("\n").map((line, j) => (
+                        <Text key={j} style={{ fontSize: 9, lineHeight: 1.4, color: "#4b5563", marginBottom: 2 }}>
+                          {line.trim() ? `• ${line.trim()}` : ""}
+                        </Text>
+                      ))}
+                    </View>
+                  )}
                 </View>
               ))}
             </View>

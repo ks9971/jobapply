@@ -14,10 +14,10 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 11, fontFamily: "Helvetica-Bold", color: "#7c3aed", marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 },
   summary: { fontSize: 10, lineHeight: 1.5, color: "#374151" },
   entryContainer: { marginBottom: 10, paddingLeft: 10, borderLeft: "2px solid #7c3aed" },
-  entryHeader: { flexDirection: "row", justifyContent: "space-between", marginBottom: 2 },
-  entryTitle: { fontSize: 10, fontFamily: "Helvetica-Bold" },
+  entryHeader: { flexDirection: "row", justifyContent: "space-between", marginBottom: 2, gap: 8 },
+  entryTitle: { fontSize: 10, fontFamily: "Helvetica-Bold", flex: 1 },
   entrySubtitle: { fontSize: 9, color: "#7c3aed", fontFamily: "Helvetica-Bold" },
-  entryDate: { fontSize: 9, color: "#6b7280" },
+  entryDate: { fontSize: 9, color: "#6b7280", flexShrink: 0, textAlign: "right" },
   entryDesc: { fontSize: 9, lineHeight: 1.4, color: "#374151", marginTop: 3 },
   skillsRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   skillBadge: { backgroundColor: "#f5f3ff", padding: "4 10", borderRadius: 12, fontSize: 9, color: "#7c3aed", border: "1px solid #ddd6fe" },
@@ -57,7 +57,15 @@ export function ModernTemplate({ data }: { data: CVData }) {
                     </Text>
                   </View>
                   <Text style={styles.entrySubtitle}>{exp.company}</Text>
-                  {exp.description && <Text style={styles.entryDesc}>{exp.description}</Text>}
+                  {exp.description && (
+                    <View style={styles.entryDesc}>
+                      {exp.description.split("\n").map((line, j) => (
+                        <Text key={j} style={{ fontSize: 9, lineHeight: 1.4, color: "#374151", marginBottom: 2 }}>
+                          {line.trim() ? `• ${line.trim()}` : ""}
+                        </Text>
+                      ))}
+                    </View>
+                  )}
                 </View>
               ))}
             </View>

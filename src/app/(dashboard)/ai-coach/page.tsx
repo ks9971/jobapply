@@ -88,14 +88,15 @@ function parseMarkdownToCV(markdown: string, fallback: CVData | null): CVData {
   }
 
   function parseExperience(content: string) {
-    const entries = content.split(/(?=###\s|(?:^|\n)\*\*[^*]+\*\*\s*(?:\||—|–|-|at|@))/);
+    const entries = content.split(/(?=###\s|(?:^|\n)\*\*[^*]+\*\*\s*(?:\||—|–))/);
     for (const entry of entries) {
       if (!entry.trim()) continue;
       const entryLines = entry.trim().split("\n").filter((l) => l.trim());
       if (entryLines.length === 0) continue;
 
       const titleLine = entryLines[0].replace(/^###\s*/, "").replace(/\*\*/g, "").trim();
-      const titleParts = titleLine.split(/\s*(?:\||—|–|-|at|@)\s*/);
+      // Split on " | ", " — ", " – ", " at ", " @ " — but use word boundaries for "at" to avoid splitting "Data Scientist"
+      const titleParts = titleLine.split(/\s*(?:\||—|–)\s*|\s+(?:at|@)\s+/);
       const title = titleParts[0]?.trim() || titleLine;
       const company = titleParts[1]?.trim() || "";
 
@@ -103,6 +104,7 @@ function parseMarkdownToCV(markdown: string, fallback: CVData | null): CVData {
       let endDate = "";
       let current = false;
       let location = "";
+      let resolvedCompany = company;
       const descLines: string[] = [];
 
       for (let i = 1; i < entryLines.length; i++) {
@@ -118,15 +120,18 @@ function parseMarkdownToCV(markdown: string, fallback: CVData | null): CVData {
           }
           const afterDate = line.replace(dateMatch[0], "").replace(/[|,]/g, "").trim();
           if (afterDate && !location) location = afterDate;
-        } else if (line.startsWith("-") || line.startsWith("•") || line.startsWith("*")) {
-          descLines.push(line.replace(/^[-•*]\s*/, ""));
+        } else if (line.startsWith("-") || line.startsWith("•")) {
+          descLines.push(line.replace(/^[-•]\s*/, ""));
+        } else if (!resolvedCompany && i <= 2 && !line.startsWith("-") && !line.startsWith("•") && line.length < 60) {
+          // Company name is often on the line right after the title
+          resolvedCompany = line;
         }
       }
 
       if (title) {
         data.experience.push({
           title,
-          company,
+          company: resolvedCompany,
           location,
           startDate,
           endDate,

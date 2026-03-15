@@ -20,10 +20,10 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 12, fontFamily: "Helvetica-Bold", color: "#059669", marginBottom: 8, borderBottom: "2px solid #d1fae5", paddingBottom: 4 },
   summary: { fontSize: 10, lineHeight: 1.5, color: "#374151" },
   entryContainer: { marginBottom: 10 },
-  entryHeader: { flexDirection: "row", justifyContent: "space-between", marginBottom: 2 },
-  entryTitle: { fontSize: 10, fontFamily: "Helvetica-Bold", color: "#064e3b" },
+  entryHeader: { flexDirection: "row", justifyContent: "space-between", marginBottom: 2, gap: 8 },
+  entryTitle: { fontSize: 10, fontFamily: "Helvetica-Bold", color: "#064e3b", flex: 1 },
   entrySubtitle: { fontSize: 9, color: "#059669", fontFamily: "Helvetica-Bold" },
-  entryDate: { fontSize: 9, color: "#6b7280" },
+  entryDate: { fontSize: 9, color: "#6b7280", flexShrink: 0, textAlign: "right" },
   entryDesc: { fontSize: 9, lineHeight: 1.4, color: "#374151", marginTop: 3 },
 });
 
@@ -104,7 +104,15 @@ export function CreativeTemplate({ data }: { data: CVData }) {
                     </Text>
                   </View>
                   <Text style={styles.entrySubtitle}>{exp.company}</Text>
-                  {exp.description && <Text style={styles.entryDesc}>{exp.description}</Text>}
+                  {exp.description && (
+                    <View style={styles.entryDesc}>
+                      {exp.description.split("\n").map((line, j) => (
+                        <Text key={j} style={{ fontSize: 9, lineHeight: 1.4, color: "#374151", marginBottom: 2 }}>
+                          {line.trim() ? `• ${line.trim()}` : ""}
+                        </Text>
+                      ))}
+                    </View>
+                  )}
                 </View>
               ))}
             </View>
