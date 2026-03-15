@@ -33,6 +33,213 @@ function detectCVContent(text: string): boolean {
   return count >= 3;
 }
 
+/** Parse AI-generated markdown CV into structured CVData for PDF rendering */
+function parseMarkdownToCV(markdown: string, fallback: CVData | null): CVData {
+  const data: CVData = {
+    name: "",
+    email: "",
+    phone: "",
+    location: "",
+    headline: "",
+    summary: "",
+    education: [],
+    experience: [],
+    skills: [],
+  };
+
+  const lines = markdown.split("\n");
+  let currentSection = "";
+
+  // Extract name from first H1
+  for (const line of lines) {
+    if (line.startsWith("# ") && !line.startsWith("## ")) {
+      data.name = line.replace("# ", "").trim();
+      break;
+    }
+  }
+
+  // Extract contact info - look for email, phone, location patterns near the top
+  const contactBlock = lines.slice(0, 15).join("\n");
+  const emailMatch = contactBlock.match(/[\w.-]+@[\w.-]+\.\w+/);
+  if (emailMatch) data.email = emailMatch[0];
+  const phoneMatch = contactBlock.match(/(?:\+?\d{1,3}[-.\s]?)?\(?\d{2,4}\)?[-.\s]?\d{3,4}[-.\s]?\d{3,4}/);
+  if (phoneMatch) data.phone = phoneMatch[0].trim();
+  const locationPatterns = contactBlock.match(/(?:Location|Address|City|Based in)[:\s]*([^\n|*]+)/i);
+  if (locationPatterns) data.location = locationPatterns[1].trim();
+
+  // Parse sections
+  let sectionContent: string[] = [];
+
+  function processSection() {
+    const content = sectionContent.join("\n").trim();
+    if (!content) return;
+
+    const sectionLower = currentSection.toLowerCase();
+
+    if (sectionLower.includes("summary") || sectionLower.includes("objective") || sectionLower.includes("about")) {
+      data.summary = content.replace(/^[-*•]\s*/gm, "").trim();
+    } else if (sectionLower.includes("experience") || sectionLower.includes("employment") || sectionLower.includes("work history")) {
+      parseExperience(content);
+    } else if (sectionLower.includes("education") || sectionLower.includes("academic")) {
+      parseEducation(content);
+    } else if (sectionLower.includes("skill") || sectionLower.includes("competenc") || sectionLower.includes("technologies")) {
+      parseSkills(content);
+    }
+  }
+
+  function parseExperience(content: string) {
+    const entries = content.split(/(?=###\s|(?:^|\n)\*\*[^*]+\*\*\s*(?:\||—|–|-|at|@))/);
+    for (const entry of entries) {
+      if (!entry.trim()) continue;
+      const entryLines = entry.trim().split("\n").filter((l) => l.trim());
+      if (entryLines.length === 0) continue;
+
+      const titleLine = entryLines[0].replace(/^###\s*/, "").replace(/\*\*/g, "").trim();
+      const titleParts = titleLine.split(/\s*(?:\||—|–|-|at|@)\s*/);
+      const title = titleParts[0]?.trim() || titleLine;
+      const company = titleParts[1]?.trim() || "";
+
+      let startDate = "";
+      let endDate = "";
+      let current = false;
+      let location = "";
+      const descLines: string[] = [];
+
+      for (let i = 1; i < entryLines.length; i++) {
+        const line = entryLines[i].replace(/\*\*/g, "").replace(/\*/g, "").trim();
+        const dateMatch = line.match(/(\w+\.?\s*\d{4})\s*(?:[-–—]|to)\s*(\w+\.?\s*\d{4}|Present|Current|Now)/i);
+        if (dateMatch) {
+          startDate = dateMatch[1];
+          const end = dateMatch[2];
+          if (/present|current|now/i.test(end)) {
+            current = true;
+          } else {
+            endDate = end;
+          }
+          const afterDate = line.replace(dateMatch[0], "").replace(/[|,]/g, "").trim();
+          if (afterDate && !location) location = afterDate;
+        } else if (line.startsWith("-") || line.startsWith("•") || line.startsWith("*")) {
+          descLines.push(line.replace(/^[-•*]\s*/, ""));
+        }
+      }
+
+      if (title) {
+        data.experience.push({
+          title,
+          company,
+          location,
+          startDate,
+          endDate,
+          current,
+          description: descLines.join("\n"),
+        });
+      }
+    }
+  }
+
+  function parseEducation(content: string) {
+    const entries = content.split(/(?=###\s|(?:^|\n)\*\*[^*]+\*\*)/);
+    for (const entry of entries) {
+      if (!entry.trim()) continue;
+      const entryLines = entry.trim().split("\n").filter((l) => l.trim());
+      if (entryLines.length === 0) continue;
+
+      const titleLine = entryLines[0].replace(/^###\s*/, "").replace(/\*\*/g, "").trim();
+      const parts = titleLine.split(/\s*(?:\||—|–|-|,)\s*/);
+
+      let degree = parts[0]?.trim() || titleLine;
+      let field = "";
+      let institution = parts[1]?.trim() || "";
+
+      const inMatch = degree.match(/^(.+?)\s+in\s+(.+)$/i);
+      if (inMatch) {
+        degree = inMatch[1].trim();
+        field = inMatch[2].trim();
+      }
+
+      let startYear = 0;
+      let endYear = 0;
+      let grade = "";
+
+      for (let i = 1; i < entryLines.length; i++) {
+        const line = entryLines[i].replace(/\*\*/g, "").replace(/\*/g, "").trim();
+        const yearMatch = line.match(/(\d{4})\s*(?:[-–—]|to)\s*(\d{4}|Present|Current)/i);
+        if (yearMatch) {
+          startYear = parseInt(yearMatch[1]);
+          if (!/present|current/i.test(yearMatch[2])) endYear = parseInt(yearMatch[2]);
+        }
+        const gradeMatch = line.match(/(?:GPA|CGPA|Grade|Score)[:\s]*([^\n,|]+)/i);
+        if (gradeMatch) grade = gradeMatch[1].trim();
+        if (!institution) {
+          const instLine = line.replace(/^[-•*]\s*/, "").trim();
+          if (instLine && !yearMatch && !gradeMatch && !/^[-•*]/.test(line)) {
+            institution = instLine;
+          }
+        }
+      }
+
+      if (degree || institution) {
+        data.education.push({
+          institution: institution || "Unknown",
+          degree,
+          field,
+          startYear,
+          endYear,
+          grade,
+        });
+      }
+    }
+  }
+
+  function parseSkills(content: string) {
+    const skillLines = content.split("\n");
+    for (const line of skillLines) {
+      const cleaned = line.replace(/^[-•*]\s*/, "").replace(/\*\*/g, "").trim();
+      if (!cleaned) continue;
+      const categoryMatch = cleaned.match(/^([^:]+):\s*(.+)/);
+      if (categoryMatch) {
+        const skills = categoryMatch[2].split(/[,;]/).map((s) => s.trim()).filter(Boolean);
+        for (const skill of skills) {
+          data.skills.push({ name: skill, level: "intermediate" });
+        }
+      } else {
+        const skills = cleaned.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
+        for (const skill of skills) {
+          if (skill.length < 50) {
+            data.skills.push({ name: skill, level: "intermediate" });
+          }
+        }
+      }
+    }
+  }
+
+  for (const line of lines) {
+    if (line.startsWith("## ")) {
+      processSection();
+      currentSection = line.replace("## ", "").trim();
+      sectionContent = [];
+    } else if (currentSection) {
+      sectionContent.push(line);
+    }
+  }
+  processSection();
+
+  // Fallback: use profile data for any empty fields
+  if (fallback) {
+    if (!data.name) data.name = fallback.name;
+    if (!data.email) data.email = fallback.email;
+    if (!data.phone) data.phone = fallback.phone;
+    if (!data.location) data.location = fallback.location;
+    if (!data.headline) data.headline = fallback.headline;
+    if (!data.summary) data.summary = fallback.summary;
+    if (data.education.length === 0) data.education = fallback.education;
+    if (data.experience.length === 0) data.experience = fallback.experience;
+    if (data.skills.length === 0) data.skills = fallback.skills;
+  }
+
+  return data;
+}
+
 export default function AICoachPage() {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
@@ -41,8 +248,10 @@ export default function AICoachPage() {
   const [profileData, setProfileData] = useState<CVData | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateStyle>("professional");
   const [showTemplateSelector, setShowTemplateSelector] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -89,6 +298,100 @@ export default function AICoachPage() {
         })) || [],
       });
     }
+  }
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const maxSize = 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      alert("File too large. Maximum size is 10MB.");
+      return;
+    }
+
+    const allowedTypes = ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
+    if (!allowedTypes.includes(file.type) && !file.name.endsWith(".pdf") && !file.name.endsWith(".docx")) {
+      alert("Please upload a PDF or DOCX file.");
+      return;
+    }
+
+    setUploading(true);
+
+    const userMsg: ChatMsg = {
+      id: `temp-${Date.now()}`,
+      role: "user",
+      content: `Attached resume: **${file.name}**\n\nPlease review this resume and suggest improvements. Also, use this to update my profile.`,
+      createdAt: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, userMsg]);
+    setLoading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const uploadRes = await fetch("/api/cv/upload", { method: "POST", body: formData });
+      if (!uploadRes.ok) {
+        throw new Error("Failed to upload file");
+      }
+      const uploadData = await uploadRes.json();
+
+      const parseRes = await fetch("/api/cv/parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documentId: uploadData.id }),
+      });
+
+      let resumeText = "";
+      if (parseRes.ok) {
+        const parseData = await parseRes.json();
+        resumeText = JSON.stringify(parseData.parsedData, null, 2);
+        fetchProfile();
+      }
+
+      const chatMessage = resumeText
+        ? `I've uploaded my resume (${file.name}). Here's the extracted data:\n\n${resumeText}\n\nPlease review this resume thoroughly. Tell me what's strong, what needs improvement, and suggest specific changes to make it more impactful and ATS-friendly.`
+        : `I've uploaded my resume (${file.name}) but couldn't parse its contents. Can you help me review and improve my resume?`;
+
+      const res = await fetch("/api/ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: chatMessage }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const assistantMsg: ChatMsg = {
+          id: `resp-${Date.now()}`,
+          role: "assistant",
+          content: data.message,
+          createdAt: new Date().toISOString(),
+        };
+        setMessages((prev) => [...prev, assistantMsg]);
+
+        if (detectCVContent(data.message)) {
+          setShowTemplateSelector(assistantMsg.id);
+        }
+      } else {
+        throw new Error("Failed to get AI response");
+      }
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : "Something went wrong";
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `err-${Date.now()}`,
+          role: "assistant",
+          content: `Error processing your resume: ${errMsg}. Please try again.`,
+          createdAt: new Date().toISOString(),
+        },
+      ]);
+    }
+
+    setLoading(false);
+    setUploading(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   async function sendMessage(content?: string) {
@@ -178,6 +481,11 @@ export default function AICoachPage() {
     setInput(el.value);
   }
 
+  function getCVDataForMessage(msgContent: string): CVData | null {
+    if (!detectCVContent(msgContent)) return null;
+    return parseMarkdownToCV(msgContent, profileData);
+  }
+
   if (!historyLoaded) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -221,7 +529,7 @@ export default function AICoachPage() {
               What can I help you with?
             </h2>
             <p className="text-gray-400 max-w-md mb-8 text-sm">
-              I can build your resume, write cover letters, analyze job matches, and give personalized career advice. Just ask.
+              I can build your resume, write cover letters, analyze job matches, and give personalized career advice. Upload your resume or just ask.
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-xl">
@@ -237,6 +545,19 @@ export default function AICoachPage() {
                   <span>{s.text}</span>
                 </button>
               ))}
+            </div>
+
+            {/* Upload CTA */}
+            <div className="mt-6">
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center gap-2 px-5 py-3 bg-white border-2 border-dashed border-gray-300 rounded-xl text-sm text-gray-600 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-all"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+                Upload your resume (PDF) to get started
+              </button>
             </div>
           </div>
         )}
@@ -264,7 +585,7 @@ export default function AICoachPage() {
               </div>
             </div>
 
-            {/* PDF Download bar */}
+            {/* PDF Download bar — uses parsed markdown data */}
             {msg.role === "assistant" && detectCVContent(msg.content) && (
               <div className="ml-9 mt-2 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-xl p-4">
                 <div className="flex items-center justify-between mb-3">
@@ -299,9 +620,10 @@ export default function AICoachPage() {
                 )}
 
                 <div className="flex items-center gap-3">
-                  {profileData && (
-                    <PDFDownloadButton data={profileData} style={selectedTemplate} />
-                  )}
+                  {(() => {
+                    const cvData = getCVDataForMessage(msg.content);
+                    return cvData ? <PDFDownloadButton data={cvData} style={selectedTemplate} /> : null;
+                  })()}
                   <button
                     onClick={() => navigator.clipboard.writeText(msg.content)}
                     className="px-4 py-2 bg-white border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 text-sm transition-colors"
@@ -330,17 +652,38 @@ export default function AICoachPage() {
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        onChange={handleFileUpload}
+        className="hidden"
+      />
+
       {/* Input */}
       <div className="border-t border-gray-200 bg-white/80 backdrop-blur-sm px-6 py-3 flex-shrink-0">
         <div className="flex items-end gap-3 max-w-4xl mx-auto">
+          {/* Attach button */}
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={loading || uploading}
+            className="p-2.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors disabled:opacity-40"
+            title="Attach resume (PDF/DOCX)"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+            </svg>
+          </button>
           <textarea
             ref={textareaRef}
             value={input}
             onChange={autoResize}
             onKeyDown={handleKeyDown}
-            placeholder="Ask me to build a resume, analyze a job, or anything career-related..."
+            placeholder={uploading ? "Processing your resume..." : "Ask me to build a resume, analyze a job, or attach your resume..."}
             rows={1}
-            className="flex-1 resize-none px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm leading-relaxed bg-gray-50 focus:bg-white transition-colors"
+            disabled={uploading}
+            className="flex-1 resize-none px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm leading-relaxed bg-gray-50 focus:bg-white transition-colors disabled:opacity-50"
           />
           <button
             onClick={() => sendMessage()}
