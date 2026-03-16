@@ -100,7 +100,7 @@ export default async function DashboardPage() {
             </div>
           </div>
           <div className="flex gap-2">
-            <Link href="/cv-builder" className="px-4 py-2 bg-amber-100 text-amber-700 rounded-lg text-sm font-medium hover:bg-amber-200">
+            <Link href="/onboarding" className="px-4 py-2 bg-amber-100 text-amber-700 rounded-lg text-sm font-medium hover:bg-amber-200">
               Upload CV
             </Link>
             <Link href="/ai-coach" className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-medium hover:bg-amber-700">
@@ -226,7 +226,7 @@ export default async function DashboardPage() {
           <p className="text-sm text-gray-500 mt-1">Chat about careers, analyze jobs, generate CVs</p>
         </Link>
         <Link
-          href="/cv-builder"
+          href="/onboarding"
           className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-xl p-5 hover:shadow-md transition-all group"
         >
           <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg flex items-center justify-center text-white mb-3">

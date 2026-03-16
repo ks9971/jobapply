@@ -134,12 +134,16 @@ export async function findJobsWithEmails(
   // Process Google Jobs results first (higher quality)
   if (jobResults.jobs) {
     for (const job of jobResults.jobs) {
+      // Google Jobs often have no link — construct a search URL as fallback
+      const jobUrl = job.link || (job.title && job.company_name
+        ? `https://www.google.com/search?q=${encodeURIComponent(`${job.title} ${job.company_name} apply`)}`
+        : "");
       allJobs.push({
         title: job.title || "Unknown",
         company: job.company_name || "Unknown",
         location: job.location || "",
         description: (job.description || "") + " " + (job.extensions?.join(" ") || ""),
-        url: job.link || "",
+        url: jobUrl,
         source: job.source || "google_jobs",
       });
     }
@@ -177,8 +181,8 @@ export async function findJobsWithEmails(
     const batchResults = await Promise.all(
       batch.map(async (job) => {
         let emails = extractEmails(job.description);
-        // Only fetch page if no emails found in description
-        if (emails.length === 0 && job.url) {
+        // Only fetch page if no emails found and URL is a real job page (not a Google search fallback)
+        if (emails.length === 0 && job.url && !job.url.startsWith("https://www.google.com/search")) {
           emails = await fetchPageEmails(job.url);
         }
         return {
