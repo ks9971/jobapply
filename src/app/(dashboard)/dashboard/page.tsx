@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import Link from "next/link";
+import RemindersCard from "@/components/RemindersCard";
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -109,6 +110,9 @@ export default async function DashboardPage() {
           </div>
         </div>
       )}
+
+      {/* Reminders */}
+      <RemindersCard />
 
       {/* Pipeline Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">

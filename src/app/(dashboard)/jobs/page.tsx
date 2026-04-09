@@ -28,6 +28,22 @@ interface SavedJob {
   createdAt: string;
 }
 
+interface ATSResult {
+  score: number;
+  summary: string;
+  keywords_found: string[];
+  keywords_missing: string[];
+  section_scores: {
+    keyword_match: number;
+    formatting: number;
+    experience_relevance: number;
+    skills_match: number;
+    achievements: number;
+  };
+  suggestions: { priority: string; text: string }[];
+  formatting_issues: string[];
+}
+
 export default function JobsPage() {
   const [query, setQuery] = useState("");
   const [location, setLocation] = useState("");
@@ -37,6 +53,9 @@ export default function JobsPage() {
   const [applying, setApplying] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [expandedJob, setExpandedJob] = useState<number | null>(null);
+  const [atsModal, setAtsModal] = useState<{ job: Job; index: number } | null>(null);
+  const [atsLoading, setAtsLoading] = useState(false);
+  const [atsResult, setAtsResult] = useState<ATSResult | null>(null);
 
   useEffect(() => {
     fetchSavedJobs();
@@ -102,6 +121,50 @@ export default function JobsPage() {
     }
 
     setApplying(null);
+  }
+
+  async function checkATSScore(job: Job, index: number) {
+    setAtsModal({ job, index });
+    setAtsLoading(true);
+    setAtsResult(null);
+
+    try {
+      const res = await fetch("/api/ai/ats-score", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jobDescription: job.description,
+          jobTitle: job.title,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setAtsResult(data);
+      } else {
+        setMessage({ type: "error", text: "Failed to check ATS score. Make sure your profile has a CV uploaded." });
+        setAtsModal(null);
+      }
+    } catch {
+      setMessage({ type: "error", text: "ATS scoring failed" });
+      setAtsModal(null);
+    }
+
+    setAtsLoading(false);
+  }
+
+  function getATSScoreColor(score: number) {
+    if (score >= 80) return "text-green-600";
+    if (score >= 60) return "text-yellow-600";
+    if (score >= 40) return "text-orange-600";
+    return "text-red-600";
+  }
+
+  function getATSBarColor(score: number) {
+    if (score >= 80) return "bg-green-500";
+    if (score >= 60) return "bg-yellow-500";
+    if (score >= 40) return "bg-orange-500";
+    return "bg-red-500";
   }
 
   function getScoreColor(score: number) {
@@ -228,12 +291,25 @@ export default function JobsPage() {
                   </div>
                 </div>
 
-                <button
-                  onClick={() => setExpandedJob(expandedJob === i ? null : i)}
-                  className="mt-3 text-xs text-blue-600 hover:text-blue-700"
-                >
-                  {expandedJob === i ? "Hide description" : "Show description"}
-                </button>
+                <div className="flex items-center gap-4 mt-3">
+                  <button
+                    onClick={() => setExpandedJob(expandedJob === i ? null : i)}
+                    className="text-xs text-blue-600 hover:text-blue-700"
+                  >
+                    {expandedJob === i ? "Hide description" : "Show description"}
+                  </button>
+                  {job.description && (
+                    <button
+                      onClick={() => checkATSScore(job, i)}
+                      className="text-xs text-purple-600 hover:text-purple-700 font-medium flex items-center gap-1"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Check ATS Score
+                    </button>
+                  )}
+                </div>
 
                 {expandedJob === i && (
                   <div className="mt-3 p-4 bg-gray-50 rounded-lg text-sm text-gray-600 max-h-60 overflow-y-auto">
@@ -288,6 +364,120 @@ export default function JobsPage() {
             Enter a job role and location above. We&apos;ll find matching jobs, score them against
             your profile, and highlight ones with email contacts for instant apply.
           </p>
+        </div>
+      )}
+
+      {/* ATS Score Modal */}
+      {atsModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white rounded-t-2xl">
+              <div>
+                <h3 className="font-bold text-gray-900">ATS Compatibility Score</h3>
+                <p className="text-sm text-gray-500">{atsModal.job.title} at {atsModal.job.company}</p>
+              </div>
+              <button onClick={() => { setAtsModal(null); setAtsResult(null); }} className="text-gray-400 hover:text-gray-600">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-6">
+              {atsLoading ? (
+                <div className="text-center py-12">
+                  <svg className="animate-spin w-10 h-10 text-purple-600 mx-auto mb-4" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  <p className="text-gray-600 font-medium">Analyzing your resume against this JD...</p>
+                  <p className="text-xs text-gray-400 mt-1">Checking keywords, formatting, and ATS compatibility</p>
+                </div>
+              ) : atsResult ? (
+                <div className="space-y-6">
+                  {/* Overall Score */}
+                  <div className="text-center">
+                    <div className={`text-5xl font-bold ${getATSScoreColor(atsResult.score)}`}>
+                      {atsResult.score}%
+                    </div>
+                    <p className="text-sm text-gray-600 mt-2">{atsResult.summary}</p>
+                  </div>
+
+                  {/* Section Scores */}
+                  <div className="space-y-3">
+                    <h4 className="font-semibold text-gray-900 text-sm">Score Breakdown</h4>
+                    {Object.entries(atsResult.section_scores).map(([key, value]) => (
+                      <div key={key}>
+                        <div className="flex items-center justify-between text-sm mb-1">
+                          <span className="text-gray-600 capitalize">{key.replace(/_/g, " ")}</span>
+                          <span className={`font-bold ${getATSScoreColor(value)}`}>{value}%</span>
+                        </div>
+                        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full transition-all ${getATSBarColor(value)}`} style={{ width: `${value}%` }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Keywords */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <h4 className="font-semibold text-green-700 text-sm mb-2">Keywords Found</h4>
+                      <div className="flex flex-wrap gap-1.5">
+                        {atsResult.keywords_found.map((kw, i) => (
+                          <span key={i} className="px-2 py-0.5 bg-green-50 text-green-700 rounded text-xs border border-green-200">{kw}</span>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-red-700 text-sm mb-2">Keywords Missing</h4>
+                      <div className="flex flex-wrap gap-1.5">
+                        {atsResult.keywords_missing.map((kw, i) => (
+                          <span key={i} className="px-2 py-0.5 bg-red-50 text-red-700 rounded text-xs border border-red-200">{kw}</span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Suggestions */}
+                  <div>
+                    <h4 className="font-semibold text-gray-900 text-sm mb-2">Suggestions to Improve</h4>
+                    <div className="space-y-2">
+                      {atsResult.suggestions.map((s, i) => (
+                        <div key={i} className={`flex items-start gap-2 p-3 rounded-lg text-sm ${
+                          s.priority === "high" ? "bg-red-50 border border-red-100" :
+                          s.priority === "medium" ? "bg-yellow-50 border border-yellow-100" :
+                          "bg-blue-50 border border-blue-100"
+                        }`}>
+                          <span className={`px-1.5 py-0.5 rounded text-xs font-bold uppercase ${
+                            s.priority === "high" ? "bg-red-200 text-red-800" :
+                            s.priority === "medium" ? "bg-yellow-200 text-yellow-800" :
+                            "bg-blue-200 text-blue-800"
+                          }`}>{s.priority}</span>
+                          <span className="text-gray-700">{s.text}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Formatting Issues */}
+                  {atsResult.formatting_issues.length > 0 && (
+                    <div>
+                      <h4 className="font-semibold text-gray-900 text-sm mb-2">Formatting Issues</h4>
+                      <ul className="space-y-1">
+                        {atsResult.formatting_issues.map((issue, i) => (
+                          <li key={i} className="text-sm text-gray-600 flex items-start gap-2">
+                            <span className="text-orange-500 mt-0.5">!</span>
+                            {issue}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </div>
+          </div>
         </div>
       )}
     </div>

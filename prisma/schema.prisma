@@ -27,6 +27,8 @@ model User {
   savedJobs         SavedJob[]
   gmailToken        GmailToken?
   emailTracking     EmailTracking[]
+  atsAnalyses       ATSAnalysis[]
+  reminders         Reminder[]
 }
 
 model Account {
@@ -156,6 +158,10 @@ model Application {
   coverLetter  String?  // AI-generated cover letter
   tailoredCV   String?  // AI-tailored CV markdown
 
+  lastFollowUp   DateTime?
+  followUpCount  Int       @default(0)
+  nextFollowUpAt DateTime?
+
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
@@ -226,6 +232,33 @@ model EmailTracking {
   isRead        Boolean  @default(false)
   receivedAt    DateTime
   createdAt     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ATSAnalysis {
+  id             String   @id @default(cuid())
+  userId         String
+  jobTitle       String?
+  jobDescription String
+  resumeContent  String
+  score          Int
+  analysis       String   // JSON: { keywords_found, keywords_missing, formatting_issues, suggestions, section_scores }
+  createdAt      DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Reminder {
+  id            String    @id @default(cuid())
+  userId        String
+  applicationId String?
+  type          String    // "follow_up", "interview_prep", "status_check"
+  message       String
+  dueAt         DateTime
+  isDone        Boolean   @default(false)
+  snoozedUntil  DateTime?
+  createdAt     DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

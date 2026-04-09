@@ -153,6 +153,27 @@ Job Description: ${jobDescription.substring(0, 1000)}`,
       },
     });
 
+    // Create follow-up reminders at 7 and 14 days
+    const now = new Date();
+    await db.reminder.createMany({
+      data: [
+        {
+          userId,
+          applicationId: application.id,
+          type: "follow_up",
+          message: `Follow up on ${jobTitle} at ${jobCompany} (1 week since applying)`,
+          dueAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
+        },
+        {
+          userId,
+          applicationId: application.id,
+          type: "follow_up",
+          message: `Second follow-up on ${jobTitle} at ${jobCompany} (2 weeks since applying)`,
+          dueAt: new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000),
+        },
+      ],
+    });
+
     // Update saved job status if applicable
     if (jobId) {
       await db.savedJob.update({
