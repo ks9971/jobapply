@@ -29,6 +29,16 @@ export async function PUT(req: NextRequest) {
 
   const data = await req.json();
 
+  if (data.headline && data.headline.length > 200) {
+    return NextResponse.json({ error: "Headline must be 200 characters or less" }, { status: 400 });
+  }
+  if (data.summary && data.summary.length > 2000) {
+    return NextResponse.json({ error: "Summary must be 2000 characters or less" }, { status: 400 });
+  }
+  if (data.phone && data.phone.length > 20) {
+    return NextResponse.json({ error: "Phone must be 20 characters or less" }, { status: 400 });
+  }
+
   const totalExperience = data.totalExperience != null
     ? parseInt(String(data.totalExperience), 10) || null
     : null;

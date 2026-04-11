@@ -200,6 +200,9 @@ model SavedJob {
   source      String?  // "adzuna", "jsearch", etc.
   matchScore  Int?     // AI-calculated match percentage
   matchReason String?  // Why this job matches
+  hasEmail    Boolean  @default(false)
+  emails      String[] @default([])
+  searchQuery String?  // Original search query
   status      String   @default("new") // new, interested, applied, rejected
   createdAt   DateTime @default(now())
 

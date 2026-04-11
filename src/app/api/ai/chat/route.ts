@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { rateLimit } from "@/lib/rate-limit";
 import OpenAI from "openai";
+import { findJobsWithEmails, scoreJobsAgainstProfile } from "@/lib/job-search";
 
 function getOpenAI() {
   return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -111,10 +113,76 @@ ${applicationSummary}
 - If user asks to "prepare for interview" → generate interview prep kit`;
 }
 
+// Detect if user wants to search for jobs
+async function detectJobSearchIntent(message: string, openai: OpenAI): Promise<{ isJobSearch: boolean; query?: string; location?: string }> {
+  const jobSearchPatterns = [
+    /find\s+(?:me\s+)?(?:some\s+)?(.+?)\s+jobs?\s+(?:in|at|near|around)\s+(.+)/i,
+    /search\s+(?:for\s+)?(.+?)\s+jobs?\s+(?:in|at|near)\s+(.+)/i,
+    /(?:look|looking)\s+for\s+(.+?)\s+(?:jobs?|positions?|roles?|openings?)\s+(?:in|at|near)\s+(.+)/i,
+    /find\s+(?:me\s+)?(?:some\s+)?(.+?)\s+(?:jobs?|positions?|roles?|openings?)/i,
+    /search\s+(?:for\s+)?(.+?)\s+(?:jobs?|positions?|roles?|openings?)/i,
+    /(?:any|show|get)\s+(.+?)\s+(?:jobs?|positions?|roles?|openings?)/i,
+    /(?:look|looking)\s+for\s+(.+?)\s+(?:jobs?|positions?|roles?|openings?)/i,
+  ];
+
+  for (const pattern of jobSearchPatterns) {
+    const match = message.match(pattern);
+    if (match) {
+      return {
+        isJobSearch: true,
+        query: match[1]?.trim(),
+        location: match[2]?.trim(),
+      };
+    }
+  }
+
+  // Use AI for ambiguous cases
+  if (/jobs?|hiring|openings?|vacancies|positions?\s+(?:available|open)/i.test(message)) {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `Determine if the user wants to search for job listings. If yes, extract the job role/query and location. Return JSON: {"isJobSearch": true/false, "query": "role", "location": "city or null"}. Only return valid JSON.`,
+        },
+        { role: "user", content: message },
+      ],
+      temperature: 0,
+      response_format: { type: "json_object" },
+    });
+    try {
+      return JSON.parse(response.choices[0].message.content!);
+    } catch {
+      return { isJobSearch: false };
+    }
+  }
+
+  return { isJobSearch: false };
+}
+
+// Format job results for the AI to present in chat
+function formatJobResultsForChat(jobs: Array<{ title: string; company: string; location: string; matchScore: number; matchReason: string; url: string; hasEmail: boolean; emails: string[] }>) {
+  return jobs.slice(0, 10).map((job, i) => {
+    const portalLinks = {
+      naukri: `https://www.naukri.com/jobid?q=${encodeURIComponent(`${job.title} ${job.company}`)}`,
+      linkedin: `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(`${job.title} ${job.company}`)}&location=India`,
+    };
+    return `**${i + 1}. ${job.title}** at ${job.company}${job.location ? ` (${job.location})` : ""}
+   Match: ${job.matchScore}% — ${job.matchReason}
+   ${job.hasEmail ? `📧 Email Apply: ${job.emails.join(", ")}` : ""}
+   🔗 [Naukri](${portalLinks.naukri}) | [LinkedIn](${portalLinks.linkedin})${job.url && !job.url.includes("naukri.com/jobid") ? ` | [Original](${job.url})` : ""}`;
+  }).join("\n\n");
+}
+
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { success } = rateLimit(`ai-chat:${session.user.id}`, 20, 60000);
+  if (!success) {
+    return NextResponse.json({ error: "Too many requests. Please wait a moment." }, { status: 429 });
   }
 
   const { message } = await req.json();
@@ -123,31 +191,75 @@ export async function POST(req: NextRequest) {
   }
 
   const userId = session.user.id;
+  const openai = getOpenAI();
 
   // Save user message
   await db.chatMessage.create({
     data: { userId, role: "user", content: message },
   });
 
-  // Get user context and chat history
-  const [context, history] = await Promise.all([
+  // Get user context, chat history, and detect job search intent in parallel
+  const [context, history, jobSearchIntent] = await Promise.all([
     getUserContext(userId),
     db.chatMessage.findMany({
       where: { userId },
       orderBy: { createdAt: "asc" },
-      take: 50, // Last 50 messages for context
+      take: 50,
     }),
+    detectJobSearchIntent(message, openai),
   ]);
 
   const systemPrompt = buildSystemPrompt(context);
 
+  // If job search detected, run the search pipeline
+  let jobSearchContext = "";
+  if (jobSearchIntent.isJobSearch && jobSearchIntent.query) {
+    try {
+      const jobs = await findJobsWithEmails(jobSearchIntent.query, jobSearchIntent.location);
+
+      // Build profile summary for scoring
+      const profileSummary = context.profile
+        ? `${context.profile.headline || ""} | Skills: ${context.profile.skills.map((s) => s.name).join(", ")} | Experience: ${context.profile.experience.map((e) => `${e.title} at ${e.company}`).join(", ")}`
+        : "No profile set up";
+
+      const scoredJobs = await scoreJobsAgainstProfile(jobs.slice(0, 15), profileSummary);
+
+      // Save top results to DB as SavedJob entries
+      const savePromises = scoredJobs.slice(0, 10).map((job) =>
+        db.savedJob.create({
+          data: {
+            userId,
+            title: job.title,
+            company: job.company,
+            location: job.location || "",
+            description: job.description?.substring(0, 500) || "",
+            url: job.url || "",
+            source: job.source || "ai_chat_search",
+            hasEmail: job.hasEmail,
+            emails: job.emails || [],
+            matchScore: job.matchScore,
+            matchReason: job.matchReason,
+            searchQuery: jobSearchIntent.query!,
+          },
+        }).catch(() => null) // Don't fail if save errors
+      );
+      await Promise.all(savePromises);
+
+      // Format results for AI context
+      const formattedJobs = formatJobResultsForChat(scoredJobs);
+      jobSearchContext = `\n\n## Job Search Results\nThe user asked to find "${jobSearchIntent.query}"${jobSearchIntent.location ? ` in ${jobSearchIntent.location}` : ""} jobs. Here are the results scored against their profile:\n\n${formattedJobs}\n\nPresent these results conversationally. Highlight the best matches, mention which ones have email-apply options, and recommend which to apply to based on their profile. The results have been saved to their account — mention they can find them in the Jobs page too.`;
+    } catch (error) {
+      jobSearchContext = `\n\n[Job search for "${jobSearchIntent.query}" failed: ${error instanceof Error ? error.message : "Unknown error"}. Let the user know and suggest they try the Jobs page directly.]`;
+    }
+  }
+
   // Build messages array with history
   const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
-    { role: "system", content: systemPrompt },
+    { role: "system", content: systemPrompt + jobSearchContext },
   ];
 
   // Add recent history (skip the message we just saved — it's the current one)
-  const recentHistory = history.slice(-20); // Last 20 for API call
+  const recentHistory = history.slice(-20);
   for (const msg of recentHistory) {
     messages.push({
       role: msg.role as "user" | "assistant",
@@ -156,7 +268,6 @@ export async function POST(req: NextRequest) {
   }
 
   // Generate AI response
-  const openai = getOpenAI();
   const response = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     messages,
