@@ -32,6 +32,8 @@ model User {
   emailTracking     EmailTracking[]
   atsAnalyses       ATSAnalysis[]
   reminders         Reminder[]
+  interviewPreps    InterviewPrep[]
+  mockSessions      MockSession[]
 }
 
 model Account {
@@ -265,6 +267,36 @@ model Reminder {
   isDone        Boolean   @default(false)
   snoozedUntil  DateTime?
   createdAt     DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model InterviewPrep {
+  id              String   @id @default(cuid())
+  userId          String
+  jobTitle        String
+  company         String?
+  prepType        String   @default("full") // "full", "technical", "hr", "behavioral"
+  questions       String   // JSON: [{ question, suggestedAnswer, category, difficulty }]
+  companyInsights String?
+  tips            String?
+  createdAt       DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model MockSession {
+  id          String    @id @default(cuid())
+  userId      String
+  jobTitle    String
+  company     String?
+  questions   String    // JSON: array of question strings
+  userAnswers String    @default("[]") // JSON: [{ questionIndex, answer, score, feedback }]
+  totalScore  Int?
+  feedback    String?
+  status      String    @default("in_progress") // "in_progress", "completed"
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
