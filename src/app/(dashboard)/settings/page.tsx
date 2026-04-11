@@ -14,9 +14,13 @@ export default function SettingsPage() {
   const [gmail, setGmail] = useState<GmailStatus | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<string | null>(null);
+  const [digestEnabled, setDigestEnabled] = useState(false);
+  const [digestTime, setDigestTime] = useState("09:00");
+  const [digestSaving, setDigestSaving] = useState(false);
 
   useEffect(() => {
     fetchGmailStatus();
+    fetchDigestSettings();
   }, []);
 
   async function fetchGmailStatus() {
@@ -31,6 +35,27 @@ export default function SettingsPage() {
     await fetch("/api/gmail", { method: "DELETE" });
     setGmail({ connected: false });
     fetchGmailStatus();
+  }
+
+  async function fetchDigestSettings() {
+    const res = await fetch("/api/settings/digest");
+    if (res.ok) {
+      const data = await res.json();
+      setDigestEnabled(data.digestEnabled);
+      setDigestTime(data.digestTime || "09:00");
+    }
+  }
+
+  async function saveDigestSettings(enabled: boolean, time?: string) {
+    setDigestSaving(true);
+    await fetch("/api/settings/digest", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ digestEnabled: enabled, digestTime: time || digestTime }),
+    });
+    setDigestEnabled(enabled);
+    if (time) setDigestTime(time);
+    setDigestSaving(false);
   }
 
   async function scanEmails() {
@@ -140,6 +165,61 @@ export default function SettingsPage() {
             )}
           </div>
         )}
+      </div>
+
+      {/* Daily Job Digest */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
+            <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <div>
+            <h3 className="font-semibold text-gray-900">Daily Job Digest</h3>
+            <p className="text-sm text-gray-500">Get top job matches emailed to you every morning</p>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <div>
+              <p className="font-medium text-gray-900">Enable Daily Digest</p>
+              <p className="text-xs text-gray-500">Requires Gmail connected + job preferences set</p>
+            </div>
+            <button
+              onClick={() => saveDigestSettings(!digestEnabled)}
+              disabled={digestSaving}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                digestEnabled ? "bg-blue-600" : "bg-gray-300"
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  digestEnabled ? "translate-x-6" : "translate-x-1"
+                }`}
+              />
+            </button>
+          </div>
+
+          {digestEnabled && (
+            <div className="flex items-center gap-4 px-4">
+              <label className="text-sm text-gray-600">Preferred time:</label>
+              <select
+                value={digestTime}
+                onChange={(e) => saveDigestSettings(true, e.target.value)}
+                className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                {["06:00", "07:00", "08:00", "09:00", "10:00", "11:00", "12:00"].map((t) => (
+                  <option key={t} value={t}>
+                    {t} IST
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-400">(Digest runs daily at ~9:30 AM IST via server cron)</p>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Portal Credentials */}
