@@ -53,6 +53,8 @@ export default function JobsPage() {
   const [applying, setApplying] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [expandedJob, setExpandedJob] = useState<number | null>(null);
+  const [expandedSavedJob, setExpandedSavedJob] = useState<string | null>(null);
+  const [savedJobFilter, setSavedJobFilter] = useState<string>("all");
   const [atsModal, setAtsModal] = useState<{ job: Job; index: number } | null>(null);
   const [atsLoading, setAtsLoading] = useState(false);
   const [atsResult, setAtsResult] = useState<ATSResult | null>(null);
@@ -167,6 +169,39 @@ export default function JobsPage() {
     return "bg-red-500";
   }
 
+  function getPortalLinks(title: string, company: string) {
+    const q = `${title} ${company}`.trim();
+    return {
+      naukri: `https://www.naukri.com/jobid?q=${encodeURIComponent(q)}`,
+      linkedin: `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(q)}&location=India`,
+      indeed: `https://in.indeed.com/jobs?q=${encodeURIComponent(q)}`,
+    };
+  }
+
+  function checkATSScoreForSaved(savedJob: SavedJob) {
+    const job: Job = {
+      title: savedJob.title,
+      company: savedJob.company,
+      location: savedJob.location || "",
+      description: savedJob.description || "",
+      url: savedJob.url || "",
+      source: "saved",
+      emails: [],
+      hasEmail: false,
+      matchScore: savedJob.matchScore || 0,
+      matchReason: savedJob.matchReason || "",
+    };
+    checkATSScore(job, -1);
+  }
+
+  async function deleteSavedJob(id: string) {
+    const res = await fetch(`/api/jobs/search?id=${id}`, { method: "DELETE" });
+    if (res.ok) {
+      setSavedJobs((prev) => prev.filter((j) => j.id !== id));
+      setExpandedSavedJob(null);
+    }
+  }
+
   function getScoreColor(score: number) {
     if (score >= 80) return "text-green-700 bg-green-100";
     if (score >= 60) return "text-yellow-700 bg-yellow-100";
@@ -277,16 +312,37 @@ export default function JobsPage() {
                         </button>
                       ))
                     ) : (
-                      job.url && (
-                        <a
-                          href={job.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium whitespace-nowrap transition-colors text-center"
-                        >
-                          View Listing
-                        </a>
-                      )
+                      <div className="flex flex-col gap-1.5">
+                        {job.url && !job.url.includes("naukri.com/jobid") && (
+                          <a
+                            href={job.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium whitespace-nowrap transition-colors text-center"
+                          >
+                            View Listing
+                          </a>
+                        )}
+                        {(() => {
+                          const links = getPortalLinks(job.title, job.company);
+                          return (
+                            <div className="flex gap-1.5">
+                              <a href={links.naukri} target="_blank" rel="noopener noreferrer"
+                                className="px-2.5 py-1.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 text-xs font-medium transition-colors">
+                                Naukri
+                              </a>
+                              <a href={links.linkedin} target="_blank" rel="noopener noreferrer"
+                                className="px-2.5 py-1.5 bg-sky-50 text-sky-700 rounded-lg hover:bg-sky-100 text-xs font-medium transition-colors">
+                                LinkedIn
+                              </a>
+                              <a href={links.indeed} target="_blank" rel="noopener noreferrer"
+                                className="px-2.5 py-1.5 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 text-xs font-medium transition-colors">
+                                Indeed
+                              </a>
+                            </div>
+                          );
+                        })()}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -325,29 +381,129 @@ export default function JobsPage() {
       {/* Previously Saved Jobs */}
       {savedJobs.length > 0 && (
         <div className="space-y-4">
-          <h2 className="text-lg font-semibold text-gray-900">Previous Searches</h2>
-          {savedJobs.map((job) => (
-            <div key={job.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <p className="font-medium text-gray-900">{job.title}</p>
-                  {job.matchScore && (
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${getScoreColor(job.matchScore)}`}>
-                      {job.matchScore}%
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-900">Previous Searches ({savedJobs.length})</h2>
+            <div className="flex gap-1.5">
+              {["all", "new", "interested", "applied"].map((filter) => (
+                <button
+                  key={filter}
+                  onClick={() => setSavedJobFilter(filter)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                    savedJobFilter === filter
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  }`}
+                >
+                  {filter.charAt(0).toUpperCase() + filter.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+          {savedJobs
+            .filter((job) => savedJobFilter === "all" || job.status === savedJobFilter)
+            .map((job) => (
+            <div key={job.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <button
+                onClick={() => setExpandedSavedJob(expandedSavedJob === job.id ? null : job.id)}
+                className="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors text-left"
+              >
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-medium text-gray-900">{job.title}</p>
+                    {job.matchScore != null && job.matchScore > 0 && (
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${getScoreColor(job.matchScore)}`}>
+                        {job.matchScore}%
+                      </span>
+                    )}
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                      job.status === "applied" ? "bg-green-100 text-green-700" :
+                      job.status === "interested" ? "bg-blue-100 text-blue-700" :
+                      "bg-gray-100 text-gray-600"
+                    }`}>
+                      {job.status}
                     </span>
-                  )}
+                  </div>
+                  <p className="text-sm text-gray-500">{job.company} {job.location && `· ${job.location}`}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Saved {new Date(job.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                  </p>
                 </div>
-                <p className="text-sm text-gray-500">{job.company} {job.location && `· ${job.location}`}</p>
-              </div>
-              <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                job.status === "applied" ? "bg-green-100 text-green-700" :
-                job.status === "interested" ? "bg-blue-100 text-blue-700" :
-                "bg-gray-100 text-gray-600"
-              }`}>
-                {job.status}
-              </span>
+                <svg className={`w-5 h-5 text-gray-400 transition-transform ${expandedSavedJob === job.id ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {expandedSavedJob === job.id && (
+                <div className="px-4 pb-4 border-t border-gray-100">
+                  {/* Match Reason */}
+                  {job.matchReason && (
+                    <p className="text-xs text-gray-500 mt-3 mb-2">{job.matchReason}</p>
+                  )}
+
+                  {/* Description */}
+                  {job.description && (
+                    <div className="mt-2 p-3 bg-gray-50 rounded-lg text-sm text-gray-600 max-h-40 overflow-y-auto">
+                      {job.description}
+                    </div>
+                  )}
+
+                  {/* Action Buttons */}
+                  <div className="flex items-center gap-2 mt-3 flex-wrap">
+                    {/* Portal Links */}
+                    {(() => {
+                      const links = getPortalLinks(job.title, job.company);
+                      return (
+                        <>
+                          {job.url && !job.url.includes("naukri.com/jobid") && (
+                            <a href={job.url} target="_blank" rel="noopener noreferrer"
+                              className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-xs font-medium transition-colors">
+                              View Original
+                            </a>
+                          )}
+                          <a href={links.naukri} target="_blank" rel="noopener noreferrer"
+                            className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 text-xs font-medium transition-colors">
+                            Naukri
+                          </a>
+                          <a href={links.linkedin} target="_blank" rel="noopener noreferrer"
+                            className="px-3 py-1.5 bg-sky-50 text-sky-700 rounded-lg hover:bg-sky-100 text-xs font-medium transition-colors">
+                            LinkedIn
+                          </a>
+                          <a href={links.indeed} target="_blank" rel="noopener noreferrer"
+                            className="px-3 py-1.5 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 text-xs font-medium transition-colors">
+                            Indeed
+                          </a>
+                        </>
+                      );
+                    })()}
+
+                    {/* ATS Score */}
+                    {job.description && (
+                      <button
+                        onClick={() => checkATSScoreForSaved(job)}
+                        className="px-3 py-1.5 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 text-xs font-medium transition-colors flex items-center gap-1"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        ATS Score
+                      </button>
+                    )}
+
+                    {/* Delete */}
+                    <button
+                      onClick={() => deleteSavedJob(job.id)}
+                      className="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 text-xs font-medium transition-colors ml-auto"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
+          {savedJobs.filter((job) => savedJobFilter === "all" || job.status === savedJobFilter).length === 0 && (
+            <p className="text-sm text-gray-400 text-center py-4">No jobs with status &quot;{savedJobFilter}&quot;</p>
+          )}
         </div>
       )}
 

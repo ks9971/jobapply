@@ -58,7 +58,12 @@ Only return valid JSON, no markdown or extra text.`,
     response_format: { type: "json_object" },
   });
 
-  const parsedData = JSON.parse(response.choices[0].message.content!);
+  let parsedData;
+  try {
+    parsedData = JSON.parse(response.choices[0].message.content!);
+  } catch {
+    return NextResponse.json({ error: "Failed to parse CV data" }, { status: 500 });
+  }
 
   // Save parsed data to the document
   await db.cVDocument.update({

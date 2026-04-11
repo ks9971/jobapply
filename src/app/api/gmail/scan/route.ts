@@ -76,8 +76,13 @@ Only return valid JSON.`;
       response_format: { type: "json_object" },
     });
 
-    const parsed = JSON.parse(response.choices[0].message.content!);
-    const classifications = Array.isArray(parsed) ? parsed : parsed.classifications || parsed.emails || [];
+    let classifications;
+    try {
+      const parsed = JSON.parse(response.choices[0].message.content!);
+      classifications = Array.isArray(parsed) ? parsed : parsed.classifications || parsed.emails || [];
+    } catch {
+      classifications = [];
+    }
 
     // Save classified emails
     const savedEmails = [];

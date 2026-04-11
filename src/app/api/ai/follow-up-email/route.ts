@@ -84,7 +84,12 @@ Original Cover Letter Summary: ${application.coverLetter ? application.coverLett
     response_format: { type: "json_object" },
   });
 
-  const emailContent = JSON.parse(response.choices[0].message.content!);
+  let emailContent;
+  try {
+    emailContent = JSON.parse(response.choices[0].message.content!);
+  } catch {
+    return NextResponse.json({ error: "Failed to generate follow-up email" }, { status: 500 });
+  }
 
   return NextResponse.json({
     subject: emailContent.subject,

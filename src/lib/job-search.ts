@@ -34,6 +34,24 @@ export interface JobResult {
 // Keep backward compat alias
 export type JobWithEmail = JobResult;
 
+// Build useful portal search URLs when Google Jobs has no direct link
+function buildPortalSearchUrl(title: string, company: string): string {
+  const query = `${title} ${company}`.trim();
+  if (!query) return "";
+  // Link to Naukri search — most useful for Indian job seekers
+  return `https://www.naukri.com/jobid?q=${encodeURIComponent(query)}`;
+}
+
+// Generate multiple portal links for a job
+export function getPortalLinks(title: string, company: string): { naukri: string; linkedin: string; indeed: string } {
+  const q = `${title} ${company}`.trim();
+  return {
+    naukri: `https://www.naukri.com/jobid?q=${encodeURIComponent(q)}`,
+    linkedin: `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(q)}&location=India`,
+    indeed: `https://in.indeed.com/jobs?q=${encodeURIComponent(q)}`,
+  };
+}
+
 // Extract email addresses from text
 function extractEmails(text: string): string[] {
   const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
@@ -134,10 +152,8 @@ export async function findJobsWithEmails(
   // Process Google Jobs results first (higher quality)
   if (jobResults.jobs) {
     for (const job of jobResults.jobs) {
-      // Google Jobs often have no link — construct a search URL as fallback
-      const jobUrl = job.link || (job.title && job.company_name
-        ? `https://www.google.com/search?q=${encodeURIComponent(`${job.title} ${job.company_name} apply`)}`
-        : "");
+      // Google Jobs often have no link — link to Naukri search as useful fallback
+      const jobUrl = job.link || buildPortalSearchUrl(job.title || "", job.company_name || "");
       allJobs.push({
         title: job.title || "Unknown",
         company: job.company_name || "Unknown",

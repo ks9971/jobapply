@@ -97,3 +97,23 @@ export async function GET() {
 
   return NextResponse.json(jobs);
 }
+
+// DELETE: remove a saved job
+export async function DELETE(req: NextRequest) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { searchParams } = new URL(req.url);
+  const id = searchParams.get("id");
+  if (!id) {
+    return NextResponse.json({ error: "ID required" }, { status: 400 });
+  }
+
+  await db.savedJob.delete({
+    where: { id, userId: session.user.id },
+  });
+
+  return NextResponse.json({ success: true });
+}

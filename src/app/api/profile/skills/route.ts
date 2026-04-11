@@ -37,6 +37,10 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "ID required" }, { status: 400 });
   }
 
+  const profile = await db.profile.findUnique({ where: { userId: session.user.id } });
+  if (!profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 });
+  const record = await db.skill.findFirst({ where: { id, profileId: profile.id } });
+  if (!record) return NextResponse.json({ error: "Not found" }, { status: 404 });
   await db.skill.delete({ where: { id } });
   return NextResponse.json({ success: true });
 }

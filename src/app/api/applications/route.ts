@@ -69,7 +69,7 @@ export async function PUT(req: NextRequest) {
   const data = await req.json();
 
   const application = await db.application.update({
-    where: { id: data.id },
+    where: { id: data.id, userId: session.user.id },
     data: {
       status: data.status,
       notes: data.notes,
@@ -91,6 +91,6 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "ID required" }, { status: 400 });
   }
 
-  await db.application.delete({ where: { id } });
+  await db.application.delete({ where: { id, userId: session.user.id } });
   return NextResponse.json({ success: true });
 }
