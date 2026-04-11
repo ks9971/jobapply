@@ -110,7 +110,137 @@ ${applicationSummary}
 - If user asks to "generate CV" or "create resume" → generate tailored markdown CV
 - If user asks to "write cover letter" → generate cover letter
 - If user asks "what should I improve" → give profile improvement suggestions
-- If user asks to "prepare for interview" → generate interview prep kit`;
+- If user asks to "prepare for interview" → generate interview prep kit
+- If user asks to "find jobs" or "search for jobs" → job search is triggered automatically, present the results
+- If user asks to "prepare application" or "prepare for job #N" → generate full application kit (tailored CV + cover letter + email draft + talking points) for that specific job`;
+}
+
+// Detect if user wants to prepare an application (references a job number or title)
+function detectPrepIntent(message: string): { isPrep: boolean; jobNumber?: number; jobTitle?: string } {
+  // "prepare for job #3", "prepare application for job 3", "apply to job #5"
+  const numberMatch = message.match(/(?:prepare|apply|application|materials?|kit)\s+(?:for\s+|to\s+)?(?:job\s*)?#?(\d+)/i);
+  if (numberMatch) {
+    return { isPrep: true, jobNumber: parseInt(numberMatch[1]) };
+  }
+  // "prepare for the React Developer role", "prepare for TCS job"
+  const titleMatch = message.match(/(?:prepare|apply|application|materials?|kit)\s+(?:for\s+|to\s+)?(?:the\s+)?(.+?)(?:\s+(?:role|job|position|at\s+.+))?$/i);
+  if (titleMatch && titleMatch[1].length > 2) {
+    return { isPrep: true, jobTitle: titleMatch[1].trim() };
+  }
+  return { isPrep: false };
+}
+
+// Detect and handle profile update requests via chat
+async function handleProfileUpdate(
+  message: string,
+  userId: string,
+  openai: OpenAI
+): Promise<{ updated: boolean; context: string }> {
+  // Check if message looks like a profile update request
+  const updatePatterns = [
+    /(?:add|update|change|set|include)\s+(?:my\s+)?(?:skill|skills)/i,
+    /(?:add|update|change)\s+(?:my\s+)?(?:experience|job|work|role|position)/i,
+    /(?:add|update|change|set)\s+(?:my\s+)?(?:education|degree|college|university)/i,
+    /(?:update|change|set)\s+(?:my\s+)?(?:phone|location|headline|summary|salary|notice\s*period|expected\s*salary|current\s*salary)/i,
+    /(?:my\s+)?(?:new\s+)?(?:job|role|position)\s+(?:at|is|with)\s+/i,
+    /(?:i\s+(?:now\s+)?(?:work|joined|started|moved)\s+(?:at|to|as))/i,
+  ];
+
+  if (!updatePatterns.some((p) => p.test(message))) {
+    return { updated: false, context: "" };
+  }
+
+  // Use AI to extract structured profile data from the message
+  const extractionResponse = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      {
+        role: "system",
+        content: `Extract profile update data from the user's message. Return JSON with the updates to make.
+Possible update types:
+- {"type": "skills", "skills": [{"name": "Docker", "level": "intermediate"}, {"name": "Kubernetes", "level": "beginner"}]}
+- {"type": "experience", "experience": {"company": "TCS", "title": "Senior Developer", "location": "Mumbai", "startDate": "2024-01-01", "current": true, "description": "Working on..."}}
+- {"type": "education", "education": {"institution": "IIT Delhi", "degree": "B.Tech", "field": "Computer Science", "startYear": 2018, "endYear": 2022}}
+- {"type": "profile", "profile": {"phone": "...", "location": "...", "headline": "...", "summary": "...", "currentSalary": "...", "expectedSalary": "...", "noticePeriod": "..."}}
+- {"type": "none"} if no clear update is requested
+
+For skill levels, use: beginner, intermediate, advanced, expert.
+Only return valid JSON. If the message is ambiguous, return {"type": "none"}.`,
+      },
+      { role: "user", content: message },
+    ],
+    temperature: 0,
+    response_format: { type: "json_object" },
+  });
+
+  try {
+    const update = JSON.parse(extractionResponse.choices[0].message.content!);
+    if (update.type === "none") return { updated: false, context: "" };
+
+    const profile = await db.profile.findUnique({ where: { userId } });
+    if (!profile) return { updated: false, context: "\n\n[User has no profile yet. Suggest they set up their profile first on the Profile page.]" };
+
+    let updateSummary = "";
+
+    if (update.type === "skills" && update.skills?.length > 0) {
+      for (const skill of update.skills) {
+        await db.skill.create({
+          data: { profileId: profile.id, name: skill.name, level: skill.level || "intermediate" },
+        });
+      }
+      updateSummary = `Added skills: ${update.skills.map((s: { name: string; level: string }) => `${s.name} (${s.level})`).join(", ")}`;
+    } else if (update.type === "experience" && update.experience) {
+      const exp = update.experience;
+      await db.experience.create({
+        data: {
+          profileId: profile.id,
+          company: exp.company,
+          title: exp.title,
+          location: exp.location || "",
+          startDate: exp.startDate ? new Date(exp.startDate) : null,
+          endDate: exp.current ? null : exp.endDate ? new Date(exp.endDate) : null,
+          current: exp.current || false,
+          description: exp.description || "",
+        },
+      });
+      updateSummary = `Added experience: ${exp.title} at ${exp.company}`;
+    } else if (update.type === "education" && update.education) {
+      const edu = update.education;
+      await db.education.create({
+        data: {
+          profileId: profile.id,
+          institution: edu.institution,
+          degree: edu.degree,
+          field: edu.field || "",
+          startYear: edu.startYear || null,
+          endYear: edu.endYear || null,
+        },
+      });
+      updateSummary = `Added education: ${edu.degree}${edu.field ? ` in ${edu.field}` : ""} from ${edu.institution}`;
+    } else if (update.type === "profile" && update.profile) {
+      const data: Record<string, string> = {};
+      for (const [key, value] of Object.entries(update.profile)) {
+        if (value && typeof value === "string" && ["phone", "location", "headline", "summary", "currentSalary", "expectedSalary", "noticePeriod"].includes(key)) {
+          data[key] = value;
+        }
+      }
+      if (Object.keys(data).length > 0) {
+        await db.profile.update({ where: { userId }, data });
+        updateSummary = `Updated profile: ${Object.keys(data).join(", ")}`;
+      }
+    }
+
+    if (updateSummary) {
+      return {
+        updated: true,
+        context: `\n\n## Profile Updated Successfully\n${updateSummary}\nConfirm the update to the user and suggest any additional improvements they could make to their profile.`,
+      };
+    }
+  } catch {
+    // Extraction failed, let normal chat handle it
+  }
+
+  return { updated: false, context: "" };
 }
 
 // Detect if user wants to search for jobs
@@ -253,9 +383,49 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // If application prep detected, fetch saved job context
+  let prepContext = "";
+  const prepIntent = detectPrepIntent(message);
+  if (prepIntent.isPrep) {
+    try {
+      const recentSavedJobs = await db.savedJob.findMany({
+        where: { userId },
+        orderBy: { createdAt: "desc" },
+        take: 15,
+      });
+
+      let targetJob = null;
+      if (prepIntent.jobNumber && recentSavedJobs[prepIntent.jobNumber - 1]) {
+        targetJob = recentSavedJobs[prepIntent.jobNumber - 1];
+      } else if (prepIntent.jobTitle) {
+        const searchTerm = prepIntent.jobTitle.toLowerCase();
+        targetJob = recentSavedJobs.find(
+          (j) => j.title.toLowerCase().includes(searchTerm) || j.company.toLowerCase().includes(searchTerm)
+        );
+      }
+
+      if (targetJob) {
+        prepContext = `\n\n## Application Prep Request\nThe user wants to prepare application materials for:\n**${targetJob.title}** at **${targetJob.company}**${targetJob.location ? ` (${targetJob.location})` : ""}\nJob Description: ${targetJob.description || "Not available"}\nMatch Score: ${targetJob.matchScore || "Not scored"}%\n${targetJob.hasEmail ? `Email contacts: ${targetJob.emails.join(", ")}` : ""}\n\nGenerate a COMPLETE application kit:\n1. **Tailored CV** in markdown — reorder skills to match this role, emphasize relevant experience, ATS-optimized\n2. **Cover Letter** — specific to this role and company, reference actual skills/experience\n3. **Application Email** — short, professional email to send with the application (include Subject line)\n4. **Key Talking Points** — 3-5 bullet points to highlight in any conversation about this role\n\nUse the user's actual profile data. Be specific, not generic.`;
+      } else {
+        prepContext = `\n\n## Application Prep Request\nThe user wants to prepare application materials but no matching saved job was found. Show them their recent saved jobs and ask which one they'd like to prepare for. Their recent jobs: ${recentSavedJobs.slice(0, 5).map((j, i) => `${i + 1}. ${j.title} at ${j.company}`).join(", ")}`;
+      }
+    } catch {
+      // Ignore prep context errors
+    }
+  }
+
+  // If profile update detected, handle it
+  let profileUpdateContext = "";
+  if (!jobSearchIntent.isJobSearch && !prepIntent.isPrep) {
+    const profileUpdate = await handleProfileUpdate(message, userId, openai);
+    if (profileUpdate.updated) {
+      profileUpdateContext = profileUpdate.context;
+    }
+  }
+
   // Build messages array with history
   const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
-    { role: "system", content: systemPrompt + jobSearchContext },
+    { role: "system", content: systemPrompt + jobSearchContext + prepContext + profileUpdateContext },
   ];
 
   // Add recent history (skip the message we just saved — it's the current one)
@@ -267,12 +437,13 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // Generate AI response
+  // Generate AI response (higher token limit for prep/CV generation)
+  const needsLongResponse = prepIntent.isPrep || /generate\s+cv|create\s+resume|write\s+cover\s+letter/i.test(message);
   const response = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     messages,
     temperature: 0.7,
-    max_tokens: 4000,
+    max_tokens: needsLongResponse ? 8000 : 4000,
   });
 
   const assistantMessage = response.choices[0].message.content!;
